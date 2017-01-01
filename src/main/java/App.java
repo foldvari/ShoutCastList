@@ -8,7 +8,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URL;
@@ -24,20 +23,22 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class App {
-    private static Pattern regexPattern = Pattern.compile("[^\\(]+\\('([^']+)', (\\d+), (\\d+)\\);");
     private static Logger logger = Logger.getLogger(App.class.getName());
+    // <a href="/Genre?name=Adult%20Alternative" onclick="return loadStationsByGenre('Adult Alternative', 2, 1);">Adult Alternative</a>
+    private static Pattern regexPatternForGenreOnClick
+            = Pattern.compile("[^\\(]+\\('([^']+)', (\\d+), (\\d+)\\);");
+
     private final String mainUrl;
     private final String saveFolder = "stations";
     private WebClient webClient;
     private Map<Integer, GenreInfo> genres;
 
-    public App(String mainUrl) {
+    private App(String mainUrl) {
         this.mainUrl = mainUrl;
     }
 
     public static void main(String[] args) {
         App app = new App("http://www.shoutcast.com/");
-        // "http://www.listenlive.eu/"
         // "http://www.shoutcast.com/scradioinwinamp/"
         // "https://www.shoutcast.com/"
         try {
@@ -62,8 +63,7 @@ public class App {
     }
 
     private static GenreInfo parseGenreInfo(String onClickString) {
-        //<a href="/Genre?name=Adult%20Alternative" onclick="return loadStationsByGenre('Adult Alternative', 2, 1);">Adult Alternative</a>
-        Matcher matcher = regexPattern.matcher(onClickString);
+        Matcher matcher = regexPatternForGenreOnClick.matcher(onClickString);
         GenreInfo genreInfo = null;
         while (matcher.find()) {
             genreInfo = new GenreInfo(
@@ -75,14 +75,14 @@ public class App {
         return genreInfo;
     }
 
-    public void parse() throws IOException {
+    private void parse() throws IOException {
         logger.log(Level.INFO, "Start parsing {0}", mainUrl);
         webClient = new WebClient();
         try {
             final HtmlPage page = webClient.getPage(mainUrl + "scradioinwinamp");
             genres = collectGenres(page);
             try {
-                for (int genreId: genres.keySet()) {
+                for (int genreId : genres.keySet()) {
                     GenreInfo genreInfo = genres.get(genreId);
                     List<StationInfo> stations = getStationsByGenre(genreInfo);
                     genreInfo.setStations(stations);
@@ -96,8 +96,8 @@ public class App {
         }
     }
 
-    private List<StationInfo> getStationsByGenre(GenreInfo genreInfo) throws Exception
-    {
+    private List<StationInfo> getStationsByGenre(GenreInfo genreInfo) throws Exception {
+        logger.log(Level.INFO, "Scanning stations of genre " + genreInfo.getName());
         URL url = new URL(mainUrl + "Home/BrowseByGenre");
         WebRequest requestSettings = new WebRequest(url, HttpMethod.POST);
 
@@ -120,8 +120,7 @@ public class App {
         ArrayList<StationInfo> stations = new ArrayList<>();
         JSONArray jsonStations = new JSONObject("{'stations':" + content + "}").getJSONArray("stations");
         String targetFolder = getTargetFolder(genreInfo);
-        for (int i = 0; i < jsonStations.length(); i++)
-        {
+        for (int i = 0; i < jsonStations.length(); i++) {
             int id = jsonStations.getJSONObject(i).getInt("ID");
             String name = jsonStations.getJSONObject(i).getString("Name");
             String format = jsonStations.getJSONObject(i).getString("Format");
@@ -129,12 +128,12 @@ public class App {
             String pls = getPls(id);
 
             if ((pls != null) && !pls.contains("numberofentries=0")) {
-                logger.log(Level.WARNING, "Adding station " + id + name);
+                logger.log(Level.INFO, "Adding station " + id + " " + name + " (" + genre + ")");
                 StationInfo stationInfo = new StationInfo(id, name, format, genre, pls);
                 stations.add(stationInfo);
                 saveStation(stationInfo, targetFolder);
             } else {
-                logger.log(Level.WARNING, "Skipping station " + id + name);
+                logger.log(Level.WARNING, "Skipping station " + id + " " + name);
             }
         }
         return stations;
@@ -156,8 +155,7 @@ public class App {
         File outFile = new File(fullPath);
         outFile.getParentFile().mkdirs();
         outFile.createNewFile();
-        try (PrintWriter out = new PrintWriter(outFile))
-        {
+        try (PrintWriter out = new PrintWriter(outFile)) {
             out.println(stationInfo.getPls());
         }
     }
